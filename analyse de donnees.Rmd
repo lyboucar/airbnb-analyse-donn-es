@@ -1,0 +1,119 @@
+---
+title: "Classification non-supervisée"
+author: "Boucar LY"
+date: "11 Mai 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+base_initial <- read.csv("D:/Promutel assurance/listings.csv")
+
+base <- na.omit(base_initial[,-c(1:8,13)])
+boxplot(base$price)
+base <-base[which(base$price<9000),]
+library(forcats)
+base$room_type  <- as.numeric(fct_recode(base$room_type ,
+                "1" = "Entire home/apt",
+                "2" = "Hotel room",
+                "3" = "Private room",
+                "4" = "Shared room"))
+```
+
+## Classification hiérarchique
+
+La classification hiérarchique se fait avec la fonction hclust, disponible de base avec R. 
+
+```{r }
+#Regardons un exemple fourni avec la fonction 
+
+hc <- hclust(dist(base), "ward.D") #On doit donner une matrice de distance en entrée
+plot(hc)
+plot(hc, hang = -1) #Plus facile à lire
+
+#Si on souhaite créer un certain nombre de groupes
+grps = cutree(hc, k = 3)
+table(grps)
+
+```
+
+```{r}
+
+#On peut afficher le résultat sur le dendrogramme
+plot(hc, cex = 0.6,hang = -1)
+rect.hclust(hc, k = 3, border = c(1:3,"#0088cc", "#DBA901"))
+```
+
+
+## Algorithme k-moyennes
+
+On utilise simplement la fonction kmeans qui vient avec R.
+
+```{r }
+out = kmeans(base, centers = 3) 
+#Il est bien d'utiliser plusieurs points de départ aléatoires
+out = kmeans(base, centers = 3, nstart = 10) 
+
+
+#Comparaisons avec les résultats de la classification hierarchique
+library(e1071)
+library(plyr)
+#------classification avec ward
+tab <- table(grps, out$cluster)
+tab
+matchClasses(tab, "exact")
+grps = mapvalues(grps, from = 1:3, to = c(3,1,2))
+table(grps,out$cluster)
+matchClasses(table(grps,out$cluster), "exact")
+
+
+```
+
+## Choisir le nombre de groupes
+
+
+### Fonction NbClust (librarie NbClust)
+
+```{r }
+library(NbClust)
+
+#On peut demander tous les critères         
+res<-NbClust(base, distance = "euclidean", min.nc=3, max.nc=8, method = "complete")
+#On peut aussi demander un critère particulier
+
+res$All.index
+res$Best.nc
+```
+
+### Fonction clValid (librarie clValid)
+
+Calcule certaines des mêmes mesures que NbClust, en plus de mesures de stabilité des groupes si on enlève une variable du jeu de données. On peut utiliser plus d'une méthode de classification à la fois. Mais, on aura besoin des données originales, pas seulement de distances ou dissimilarités entre les observations. 
+
+```{r }
+library(clValid)
+#Voyons un petit exemple avec nos données
+stab = clValid(base, nClust = 3:8, clMethods = c("hierarchical", "kmeans"), validation = c("internal", "stability"),maxitems = nrow(base))
+summary(stab)
+optimalScores(stab)
+par(mfrow = c(2,4))
+plot(stab)
+
+```
+
+### Fonction silhouette (librarie cluster)
+
+Produit des graphiques de Silhouette, en plus de fournir la silhouette moyenne. On souhaite trouver des groupes clairement séparés. 
+
+
+```{r }
+library(cluster)
+sil = silhouette(grps, dist(base))
+par(mfrow = c(1,1))
+plot(sil)
+
+#On peut comparer différents nombres de groupes
+par(mfrow = c(1,2))
+plot( silhouette( kmeans(base, centers = 3)$cluster, dist(base) ) ) 
+plot( silhouette( kmeans(base, centers = 4)$cluster, dist(base) ) ) 
+
+```
